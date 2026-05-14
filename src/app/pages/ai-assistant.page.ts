@@ -2,7 +2,7 @@ import { Component, ElementRef, ViewChild, computed, inject, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { DocPage } from '../shared/doc-page';
-import { ChatMessage, FREE_MODELS, OpenRouterService, ValidationResult } from '../shared/openrouter.service';
+import { ChatMessage, FREE_MODELS, OpenRouterService, ValidationResult, getStoredApiKey, saveApiKey } from '../shared/openrouter.service';
 import { highlight } from '../shared/highlight';
 
 const SYSTEM_PROMPT = `You generate a SINGLE TypeScript schema file for the ngx-saqly-supabase library. Nothing else.
@@ -130,19 +130,48 @@ const PRESETS = [
       title="Generate your schema.ts with AI"
       lead="Describe any app idea — the assistant returns a single, copy-pasteable schema.ts file using ngx-saqly-supabase. Always the same format. One file. Ready to drop into your project.">
 
-      <div class="controls">
-        <label class="select-wrap">
-          <span>Model</span>
-          <select [(ngModel)]="model">
-            @for (m of models; track m.id) {
-              <option [value]="m.id">{{ m.label }}</option>
-            }
-          </select>
-        </label>
-        <button class="reset-btn" (click)="reset()" [disabled]="streaming()">↺ Reset</button>
-      </div>
+      <!-- API Key setup / change -->
+      @if (!hasApiKey()) {
+        <div class="apikey-gate">
+          <div class="apikey-gate-icon">🔑</div>
+          <h3 class="apikey-gate-title">Enter your OpenRouter API key</h3>
+          <p class="apikey-gate-desc">
+            Your key is stored only in your browser (<code>localStorage</code>) — never sent to any server except OpenRouter directly.
+            Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.
+          </p>
+          <form class="apikey-form" (ngSubmit)="saveKey()">
+            <input
+              class="apikey-input"
+              type="password"
+              [(ngModel)]="keyDraft"
+              name="apikey"
+              placeholder="sk-or-v1-…"
+              autocomplete="off"
+              spellcheck="false" />
+            <button class="apikey-btn" type="submit" [disabled]="!keyDraft.trim()">Save & continue →</button>
+          </form>
+        </div>
+      } @else {
+        <div class="apikey-bar">
+          <span class="apikey-bar-label">🔑 API key saved</span>
+          <span class="apikey-bar-preview">{{ maskedKey() }}</span>
+          <button class="apikey-change" (click)="changeKey()">Change key</button>
+        </div>
 
-      @if (messages().length === 0) {
+        <div class="controls">
+          <label class="select-wrap">
+            <span>Model</span>
+            <select [(ngModel)]="model">
+              @for (m of models; track m.id) {
+                <option [value]="m.id">{{ m.label }}</option>
+              }
+            </select>
+          </label>
+          <button class="reset-btn" (click)="reset()" [disabled]="streaming()">↺ Reset</button>
+        </div>
+      }
+
+      @if (hasApiKey() && messages().length === 0) {
         <div class="presets">
           <p class="presets-title">Try a preset idea:</p>
           <div class="preset-grid">
@@ -156,73 +185,75 @@ const PRESETS = [
         </div>
       }
 
-      <div class="chat" #chatBox (scroll)="onChatScroll()" (click)="onChatClick($event)">
-        @for (msg of messages(); track $index) {
-          <div class="msg" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
-            <div class="avatar">{{ msg.role === 'user' ? 'You' : 'AI' }}</div>
-            <div class="bubble" [innerHTML]="msg.html"></div>
-          </div>
-        }
-        @if (streaming() && pending()) {
-          <div class="msg assistant">
-            <div class="avatar">AI</div>
-            <div class="bubble" [innerHTML]="pendingHtml()"></div>
-          </div>
-        }
-        @if (streaming() && fallbackNote()) {
-          <div class="fallback-note">↻ {{ fallbackNote() }}</div>
-        }
-        @if (showJump()) {
-          <button class="jump-btn" (click)="jumpToBottom()">↓ Jump to latest</button>
-        }
-        @if (error()) {
-          <div class="error">
-            <div class="error-title">⚠ {{ error() }}</div>
-            @if (error().includes('rate-limited') || error().includes('429') || error().includes('Rate limited')) {
-              <ul class="error-help">
-                <li><strong>Wait ~60 seconds</strong> — the per-minute window resets quickly.</li>
-                <li><strong>Pick another model</strong> in the dropdown above — each provider has its own quota.</li>
-                <li><strong>Add $10 credit</strong> at <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">openrouter.ai/credits</a> — this unlocks 1,000 free requests/day across all <code>:free</code> models without ever charging you.</li>
-              </ul>
-            }
-          </div>
-        }
-      </div>
+      @if (hasApiKey()) {
+        <div class="chat" #chatBox (scroll)="onChatScroll()" (click)="onChatClick($event)">
+          @for (msg of messages(); track $index) {
+            <div class="msg" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
+              <div class="avatar">{{ msg.role === 'user' ? 'You' : 'AI' }}</div>
+              <div class="bubble" [innerHTML]="msg.html"></div>
+            </div>
+          }
+          @if (streaming() && pending()) {
+            <div class="msg assistant">
+              <div class="avatar">AI</div>
+              <div class="bubble" [innerHTML]="pendingHtml()"></div>
+            </div>
+          }
+          @if (streaming() && fallbackNote()) {
+            <div class="fallback-note">↻ {{ fallbackNote() }}</div>
+          }
+          @if (showJump()) {
+            <button class="jump-btn" (click)="jumpToBottom()">↓ Jump to latest</button>
+          }
+          @if (error()) {
+            <div class="error">
+              <div class="error-title">⚠ {{ error() }}</div>
+              @if (error().includes('rate-limited') || error().includes('429') || error().includes('Rate limited')) {
+                <ul class="error-help">
+                  <li><strong>Wait ~60 seconds</strong> — the per-minute window resets quickly.</li>
+                  <li><strong>Pick another model</strong> in the dropdown above — each provider has its own quota.</li>
+                  <li><strong>Add $10 credit</strong> at <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">openrouter.ai/credits</a> — this unlocks 1,000 free requests/day across all <code>:free</code> models without ever charging you.</li>
+                </ul>
+              }
+            </div>
+          }
+        </div>
 
-      @if (latestSchema()) {
-        <div class="schema-bar">
-          <div class="schema-bar-head">
-            <span class="schema-bar-file">📄 schema.ts</span>
-            <span class="schema-bar-meta">{{ schemaLines() }} lines · {{ schemaBytes() }}</span>
+        @if (latestSchema()) {
+          <div class="schema-bar">
+            <div class="schema-bar-head">
+              <span class="schema-bar-file">📄 schema.ts</span>
+              <span class="schema-bar-meta">{{ schemaLines() }} lines · {{ schemaBytes() }}</span>
+            </div>
+            <div class="schema-bar-actions">
+              <button type="button" class="schema-btn primary" (click)="copyLatestSchema()" [class.copied]="schemaCopied()">
+                @if (schemaCopied()) { ✓ Copied to clipboard } @else { 📋 Copy schema.ts }
+              </button>
+              <button type="button" class="schema-btn" (click)="downloadLatestSchema()">⬇ Download schema.ts</button>
+            </div>
           </div>
-          <div class="schema-bar-actions">
-            <button type="button" class="schema-btn primary" (click)="copyLatestSchema()" [class.copied]="schemaCopied()">
-              @if (schemaCopied()) { ✓ Copied to clipboard } @else { 📋 Copy schema.ts }
-            </button>
-            <button type="button" class="schema-btn" (click)="downloadLatestSchema()">⬇ Download schema.ts</button>
-          </div>
+        }
+
+        <form class="composer" (ngSubmit)="send()">
+          <textarea
+            [(ngModel)]="input"
+            name="input"
+            rows="3"
+            placeholder="Describe the schema you need — e.g. 'a recipe sharing app with users, recipes, ingredients, and likes'"
+            (keydown.enter)="onEnter($event)"
+            [disabled]="streaming()"></textarea>
+          @if (streaming()) {
+            <button type="button" class="send stop" (click)="stop()">■ Stop</button>
+          } @else {
+            <button type="submit" class="send" [disabled]="!input.trim()">Send →</button>
+          }
+        </form>
+
+        <div class="hint">
+          Powered by free models on <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>.
+          Press <kbd>Enter</kbd> to send, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line.
         </div>
       }
-
-      <form class="composer" (ngSubmit)="send()">
-        <textarea
-          [(ngModel)]="input"
-          name="input"
-          rows="3"
-          placeholder="Describe the schema you need — e.g. 'a recipe sharing app with users, recipes, ingredients, and likes'"
-          (keydown.enter)="onEnter($event)"
-          [disabled]="streaming()"></textarea>
-        @if (streaming()) {
-          <button type="button" class="send stop" (click)="stop()">■ Stop</button>
-        } @else {
-          <button type="submit" class="send" [disabled]="!input.trim()">Send →</button>
-        }
-      </form>
-
-      <div class="hint">
-        Powered by free models on <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>.
-        Press <kbd>Enter</kbd> to send, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line.
-      </div>
     </doc-page>
   `,
   styles: [`
@@ -588,6 +619,103 @@ const PRESETS = [
       font-size: 0.75rem;
       color: var(--text-dim);
     }
+
+    /* ── API key gate ── */
+    .apikey-gate {
+      margin: 1.5rem 0;
+      padding: 2rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      text-align: center;
+      max-width: 480px;
+    }
+    .apikey-gate-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .apikey-gate-title {
+      margin: 0 0 0.5rem;
+      font-size: 1.05rem;
+      color: var(--text);
+      -webkit-text-fill-color: var(--text);
+      background: none;
+    }
+    .apikey-gate-desc {
+      font-size: 0.83rem;
+      color: var(--text-dim);
+      margin: 0 0 1.25rem;
+      line-height: 1.55;
+    }
+    .apikey-form {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .apikey-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.55rem 0.75rem;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font: inherit;
+      font-size: 0.88rem;
+      outline: none;
+      font-family: var(--mono);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .apikey-input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px var(--green-glow);
+    }
+    .apikey-input::placeholder { color: var(--text-mute); }
+    .apikey-btn {
+      background: var(--green);
+      color: #06120c;
+      border: 0;
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.88rem;
+      transition: filter .12s;
+      white-space: nowrap;
+    }
+    .apikey-btn:hover:not(:disabled) { filter: brightness(1.08); }
+    .apikey-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── API key bar (after saved) ── */
+    .apikey-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin: 1rem 0 0.5rem;
+      padding: 0.45rem 0.75rem;
+      background: var(--green-glow);
+      border: 1px solid rgba(62, 207, 142, 0.25);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      flex-wrap: wrap;
+    }
+    .apikey-bar-label { color: var(--green); font-weight: 700; }
+    .apikey-bar-preview {
+      font-family: var(--mono);
+      color: var(--text-dim);
+      flex: 1;
+      letter-spacing: 0.04em;
+    }
+    .apikey-change {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 3px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.76rem;
+      transition: color .12s, border-color .12s;
+    }
+    .apikey-change:hover { color: var(--green); border-color: var(--green); }
   `],
 })
 export class AiAssistantPage {
@@ -600,6 +728,28 @@ export class AiAssistantPage {
   presets = PRESETS;
   model = FREE_MODELS[0].id;
 
+  // ── API key ──────────────────────────────────────
+  hasApiKey = signal(!!getStoredApiKey());
+  keyDraft = '';
+
+  maskedKey = computed(() => {
+    const k = getStoredApiKey();
+    if (!k) return '';
+    return k.slice(0, 8) + '••••••••' + k.slice(-4);
+  });
+
+  saveKey(): void {
+    saveApiKey(this.keyDraft);
+    this.hasApiKey.set(!!this.keyDraft.trim());
+    this.keyDraft = '';
+  }
+
+  changeKey(): void {
+    this.keyDraft = '';
+    this.hasApiKey.set(false);
+  }
+
+  // ── Chat ─────────────────────────────────────────
   input = '';
   messages = signal<UiMessage[]>([]);
   pending = signal('');

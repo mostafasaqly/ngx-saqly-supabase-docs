@@ -1,5 +1,4 @@
 import { Injectable } from '@angular/core';
-import { environment } from '../../environments/environment';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -19,7 +18,19 @@ export type ValidationResult = 'ok' | 'wait' | 'reject';
 export type Validator = (accumulated: string) => ValidationResult;
 
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const API_KEY = environment.openRouterKey;
+const STORAGE_KEY = 'openrouter_api_key';
+
+export function getStoredApiKey(): string {
+  return localStorage.getItem(STORAGE_KEY) ?? '';
+}
+
+export function saveApiKey(key: string): void {
+  if (key.trim()) {
+    localStorage.setItem(STORAGE_KEY, key.trim());
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
 
 // Free models on OpenRouter — ordered by code-output reliability.
 // Smaller/fast models like DeepSeek V4 Flash are NOT first because they hallucinate
@@ -54,7 +65,7 @@ export class OpenRouterService {
       res = await fetch(API_URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
+          'Authorization': `Bearer ${getStoredApiKey()}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': location.origin,
           'X-Title': 'ngx-saqly-supabase docs',
