@@ -34,7 +34,7 @@ import { highlight } from './highlight';
       align-items: center;
       gap: 0.75rem;
       padding: 0.5rem 0.85rem;
-      background: linear-gradient(180deg, #121a1c 0%, #0e1416 100%);
+      background: var(--bg-elev);
       border-bottom: 1px solid var(--code-border);
       font-size: 0.74rem;
     }
@@ -73,7 +73,7 @@ import { highlight } from './highlight';
       font-family: var(--mono);
       font-size: 0.83rem;
       line-height: 1.65;
-      color: #d3e4dc;
+      color: var(--text-dim);
     }
     pre.code code { background: none; padding: 0; border: 0; color: inherit; font-size: inherit; }
 
@@ -87,6 +87,17 @@ import { highlight } from './highlight';
     :host ::ng-deep .hl-deco  { color: #ff9ed1; }
     :host ::ng-deep .hl-op    { color: #9db1ac; }
     :host ::ng-deep .hl-punct { color: #6b7c79; }
+
+    :host-context(html.light) ::ng-deep .hl-cmt   { color: #7a9e96; }
+    :host-context(html.light) ::ng-deep .hl-str   { color: #1a6e4a; }
+    :host-context(html.light) ::ng-deep .hl-num   { color: #a05c00; }
+    :host-context(html.light) ::ng-deep .hl-kw    { color: #b5006b; }
+    :host-context(html.light) ::ng-deep .hl-bi    { color: #1a5fa8; }
+    :host-context(html.light) ::ng-deep .hl-fn    { color: #295e40; }
+    :host-context(html.light) ::ng-deep .hl-cls   { color: #7a4800; }
+    :host-context(html.light) ::ng-deep .hl-deco  { color: #8c0063; }
+    :host-context(html.light) ::ng-deep .hl-op    { color: #3d5a54; }
+    :host-context(html.light) ::ng-deep .hl-punct { color: #7a9b94; }
   `],
 })
 export class CodeBlock {

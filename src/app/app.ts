@@ -1,4 +1,4 @@
-import { Component, computed, signal } from '@angular/core';
+import { Component, computed, signal, effect, HostListener } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
@@ -56,6 +56,10 @@ const NAV: NavGroup[] = [
 })
 export class App {
   search = signal('');
+  sidebarOpen = signal(false);
+  theme = signal<'dark' | 'light'>(
+    (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark'
+  );
 
   filteredGroups = computed<NavGroup[]>(() => {
     const q = this.search().trim().toLowerCase();
@@ -65,5 +69,30 @@ export class App {
       .filter(g => g.items.length > 0);
   });
 
+  constructor() {
+    effect(() => {
+      const t = this.theme();
+      document.documentElement.classList.toggle('light', t === 'light');
+      localStorage.setItem('theme', t);
+    });
+  }
+
   onSearch(v: string): void { this.search.set(v); }
+
+  toggleTheme(): void {
+    this.theme.set(this.theme() === 'dark' ? 'light' : 'dark');
+  }
+
+  toggleSidebar(): void {
+    this.sidebarOpen.update(v => !v);
+  }
+
+  closeSidebar(): void {
+    this.sidebarOpen.set(false);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.sidebarOpen.set(false);
+  }
 }
