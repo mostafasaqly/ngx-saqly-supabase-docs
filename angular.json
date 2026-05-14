@@ -35,6 +35,7 @@
           },
           "configurations": {
             "production": {
+              "baseHref": "/ngx-saqly-supabase-docs/",
               "budgets": [
                 {
                   "type": "initial",
